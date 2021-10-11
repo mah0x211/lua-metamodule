@@ -130,8 +130,7 @@ local function register(regname, decl)
         local _M = fn()
         _M._STRING = gsub(tostring(_M), 'table', _M._NAME)
         setmetatable(_M, metatable)
-        _M:init(...)
-        return _M
+        return _M:init(...)
     end
 end
 
