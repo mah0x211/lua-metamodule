@@ -38,9 +38,11 @@ local Hello = {
     prefix = 'hello',
 }
 
---- init method will be called automatically in constructor function
+--- init method is automatically called in the constructor function,
+--- and returns the return value of the init method.
 function Hello:init(msg)
     self.word = string.format('%s %s!', self.prefix, msg or '')
+    return self
 end
 
 function Hello:say()
