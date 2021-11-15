@@ -1,8 +1,9 @@
 rockspec_format = '3.0'
 package = 'metamodule'
-version = 'scm-1'
+version = '0.2.1-1'
 source = {
-    url = 'git+https://github.com/mah0x211/lua-metamodule.git'
+    url = 'git+https://github.com/mah0x211/lua-metamodule.git',
+    tag = "v0.2.1",
 }
 description = {
     summary = 'simple oop module for lua',

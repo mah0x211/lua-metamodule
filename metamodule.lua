@@ -21,8 +21,10 @@
 --
 local concat = table.concat
 local error = error
+local string = require('stringex')
 local format = string.format
 local gsub = string.gsub
+local split = string.split
 local ipairs = ipairs
 local pairs = pairs
 local setmetatable = setmetatable
@@ -36,7 +38,6 @@ local eval = require('metamodule.eval')
 local is = require('metamodule.is')
 local pkgname = require('metamodule.pkgname')
 local seal = require('metamodule.seal')
-local split = require('metamodule.split')
 --- constants
 local REGISTRY = {
     -- data structure
@@ -143,7 +144,7 @@ local function loadModule(regname)
 
     -- if it is not registered yet, try to load a module
     if not m then
-        local segs = split(regname, '.')
+        local segs = split(regname, '.', true)
         local nseg = #segs
 
         -- load package in protected mode
