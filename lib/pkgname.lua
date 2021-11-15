@@ -20,29 +20,34 @@
 -- THE SOFTWARE.
 --
 local ipairs = ipairs
+local string = require('stringex')
 local match = string.match
 local gsub = string.gsub
 local sub = string.sub
+local split = string.split
+local trim_space = string.trim_space
 local sort = table.sort
 local getinfo = debug.getinfo
 local normalize = require('metamodule.normalize')
-local split = require('metamodule.split')
 
 --- constants
 local PKG_PATH = (function()
-    local list = split(package.path, ';')
+    local list = split(package.path, ';', true)
+    local res = {}
 
     sort(list)
-    for i, path in ipairs(list) do
-        path = gsub(path, '%.', '%%.')
-        path = gsub(path, '%-', '%%-')
-        path = gsub(path, '%?', '(.+)')
-        list[i] = '^' .. path
+    for _, path in ipairs(list) do
+        path = trim_space(path)
+        if #path > 0 then
+            path = gsub(path, '%.', '%%.')
+            path = gsub(path, '%-', '%%-')
+            path = gsub(path, '%?', '(.+)')
+            res[#res + 1] = '^' .. path
+        end
     end
+    res[#res + 1] = '(.+)%.lua'
 
-    list[#list + 1] = '(.+)%.lua'
-
-    return list
+    return res
 end)()
 
 --- converts pathname in package.path to module names

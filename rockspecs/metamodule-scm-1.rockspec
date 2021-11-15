@@ -2,7 +2,7 @@ rockspec_format = '3.0'
 package = 'metamodule'
 version = 'scm-1'
 source = {
-    url = 'git://github.com/mah0x211/lua-metamodule.git'
+    url = 'git+https://github.com/mah0x211/lua-metamodule.git'
 }
 description = {
     summary = 'simple oop module for lua',
@@ -12,7 +12,8 @@ description = {
 }
 dependencies = {
     'lua >= 5.1',
-    'dump >= 0.1.1',
+    'dump ~> 0.1',
+    'stringex ~> 0.1',
 }
 build = {
     type = 'builtin',
@@ -24,6 +25,5 @@ build = {
         ['metamodule.normalize'] = 'lib/normalize.lua',
         ['metamodule.pkgname'] = 'lib/pkgname.lua',
         ['metamodule.seal'] = 'lib/seal.lua',
-        ['metamodule.split'] = 'lib/split.lua',
     }
 }
