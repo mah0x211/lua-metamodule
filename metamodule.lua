@@ -134,12 +134,13 @@ local function register(regname, decl)
 
     -- create method table
     local index = {}
-    for k, v in pairs(decl.methods) do
-        index[k] = v
-    end
     -- append embedded module methods
     for k, methods in pairs(moduleMethods) do
         index[k] = methods
+    end
+    -- append methods
+    for k, v in pairs(decl.methods) do
+        index[k] = v
     end
     metatable.__index = index
 
