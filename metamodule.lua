@@ -21,7 +21,9 @@
 --
 local concat = table.concat
 local error = error
+local getinfo = debug.getinfo
 local string = require('stringex')
+local find = string.find
 local format = string.format
 local gsub = string.gsub
 local split = string.split
@@ -71,10 +73,32 @@ local function DEFAULT_TOSTRING(self)
 end
 
 --- register new metamodule
----@param regname string
----@param decl table
----@return function constructor
----@return string? error
+--- @param s string
+--- @vararg any
+local function errorf(s, ...)
+    local msg = format(s, ...)
+    local calllv = 2
+    local lv = 2
+    local info = getinfo(lv, 'nS')
+
+    while info do
+        if info.what ~= 'C' and not find(info.source, 'metamodule') then
+            calllv = lv
+            break
+        end
+        -- prev = info
+        lv = lv + 1
+        info = getinfo(lv, 'nS')
+    end
+
+    return error(msg, calllv)
+end
+
+--- register new metamodule
+--- @param regname string
+--- @param decl table
+--- @return function constructor
+--- @return string? error
 local function register(regname, decl)
     -- already registered
     if REGISTRY[regname] then
@@ -136,9 +160,9 @@ local function register(regname, decl)
 end
 
 --- load registered module
----@param regname string
----@return table module
----@return string error
+--- @param regname string
+--- @return table module
+--- @return string error
 local function loadModule(regname)
     local m = REGISTRY[regname]
 
@@ -146,10 +170,15 @@ local function loadModule(regname)
     if not m then
         local segs = split(regname, '.', true)
         local nseg = #segs
+        local pkg = regname
 
-        -- load package in protected mode
-        if nseg > 1 then
-            local pkg = concat(segs, '.', 1, nseg - 1)
+        -- remove module-name
+        if nseg > 1 and is.moduleName(segs[nseg]) then
+            pkg = concat(segs, '.', 1, nseg - 1)
+        end
+
+        if is.packageName(pkg) then
+            -- load package in protected mode
             local ok, err = pcall(function()
                 require(pkg)
             end)
@@ -178,9 +207,9 @@ local IDENT_FIELDS = {
 
 --- embed methods and metamethods of modules to module declaration table and
 --- returns the list of module names and the methods of all modules
----@param decl table
----@return table moduleNames
----@return table moduleMethods
+--- @param decl table
+--- @return table moduleNames
+--- @return table moduleMethods
 local function embedModules(decl, ...)
     local moduleNames = {}
     local moduleMethods = {}
@@ -189,10 +218,12 @@ local function embedModules(decl, ...)
     local methods = {}
     local metamethods = {}
 
-    for _, regname in ipairs({...}) do
+    for _, regname in ipairs({
+        ...,
+    }) do
         -- check for duplication
         if chkdup[regname] then
-            error(format('cannot embed module %q twice', regname), 4)
+            errorf('cannot embed module %q twice', regname)
         end
         chkdup[regname] = true
         moduleNames[#moduleNames + 1] = regname
@@ -201,7 +232,7 @@ local function embedModules(decl, ...)
 
         -- unable to load the specified module
         if err then
-            error(format('cannot embed module %q: %s', regname, err), 4)
+            errorf('cannot embed module %q: %s', regname, err)
         end
 
         -- embed m.vars
@@ -214,7 +245,7 @@ local function embedModules(decl, ...)
             if not IDENT_FIELDS[k] and not decl.vars[k] then
                 v, err = deepcopy(v, regname .. '.' .. k, circular)
                 if err then
-                    error(format('field %q cannot be used: %s', k, err), 4)
+                    errorf('field %q cannot be used: %s', k, err)
                 end
                 -- overwrite the field of previous embedded module
                 vars[k] = v
@@ -265,9 +296,9 @@ local RESERVED_FIELDS = {
 }
 
 --- inspect module declaration table
----@param regname string
----@param moddecl table
----@return table delc
+--- @param regname string
+--- @param moddecl table
+--- @return table delc
 local function inspect(regname, moddecl)
     local circular = {
         [tostring(moddecl)] = regname,
@@ -278,12 +309,12 @@ local function inspect(regname, moddecl)
 
     for k, v in pairs(moddecl) do
         if type(k) ~= 'string' then
-            error(format('field name must be string: %q', tostring(k)), 4)
+            errorf('field name must be string: %q', tostring(k))
         elseif IDENT_FIELDS[k] or RESERVED_FIELDS[k] then
-            error(format('reserved field %q cannot be used', k), 4)
+            errorf('reserved field %q cannot be used', k)
         elseif k == 'init' then
             if type(v) ~= 'function' then
-                error('field "init" must be function', 4)
+                errorf('field "init" must be function')
             end
             -- use as method
             methods[k] = v
@@ -291,7 +322,7 @@ local function inspect(regname, moddecl)
             -- use as variable
             local cpval, err = deepcopy(v, regname .. '.' .. k, circular)
             if err then
-                error(format('field %q cannot be used: %s', k, err), 4)
+                errorf('field %q cannot be used: %s', k, err)
             end
 
             if is.metamethodName(k) then
@@ -318,36 +349,45 @@ local function inspect(regname, moddecl)
 end
 
 --- create constructor of new metamodule
----@param modname string
----@param moddecl table
----@return function constructor
+--- @param modname string
+--- @param moddecl table
+--- @return function constructor
 local function new(modname, moddecl, ...)
-    -- verify arguments
-    if not is.moduleName(modname) then
-        error(format('module name must be the following pattern string: %q',
-                     is.PAT_MODNAME), 3)
-    elseif type(moddecl) ~= 'table' then
-        error('module declaration must be table', 3)
+    -- verify modname
+    if modname ~= nil and not is.moduleName(modname) then
+        errorf('module name must be the following pattern string: %q',
+               is.PAT_MODNAME)
     end
-
     -- prepend package-name
     local regname = modname
     local pkg = pkgname()
-    if pkg then
+    if not pkg then
+        if not modname then
+            errorf('module name must not be nil')
+        end
+    elseif modname then
         regname = pkg .. '.' .. modname
+    else
+        regname = pkg
+    end
+
+    -- verify moddecl
+    if type(moddecl) ~= 'table' then
+        errorf('module declaration must be table')
     end
 
     -- prevent duplication
     if REGISTRY[regname] then
         if pkg then
-            error(format('module name %q already defined in package %q',
-                         modname, pkg), 3)
+            errorf('module name %q already defined in package %q',
+                   modname or pkg, pkg)
         end
-        error(format('module name %q already defined', modname), 3)
+        errorf('module name %q already defined', modname)
     end
 
     -- inspect module declaration table
     local decl = inspect(regname, moddecl)
+
     -- embed another modules
     decl.embeds, decl.moduleMethods = embedModules(decl, ...)
     -- register to registry
@@ -355,7 +395,7 @@ local function new(modname, moddecl, ...)
     decl.vars._NAME = regname
     local newfn, err = register(regname, decl)
     if err then
-        error(format('failed to register %q: %s', regname, err), 3)
+        errorf('failed to register %q: %s', regname, err)
     end
 
     -- seal the declaration table to prevent misuse
@@ -365,7 +405,7 @@ local function new(modname, moddecl, ...)
 end
 
 --- dump registry table
----@return string
+--- @return string
 local function dumpRegstiry()
     return dump(REGISTRY)
 end
@@ -375,7 +415,7 @@ return {
     new = setmetatable({}, {
         __metatable = 1,
         __newindex = function(_, k)
-            error(format('attempt to assign to a readonly property: %q', k), 2)
+            errorf('attempt to assign to a readonly property: %q', k)
         end,
         --- wrapper function to create a new metamodule
         -- usage: metamodule.<modname>([moddecl, [embed_module, ...]])
@@ -383,6 +423,9 @@ return {
             return function(...)
                 return new(modname, ...)
             end
+        end,
+        __call = function(_, ...)
+            return new(nil, ...)
         end,
     }),
 }

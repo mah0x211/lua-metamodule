@@ -62,3 +62,10 @@ jobs:
       name: Run Test
       run: |
         testcase --coverage ./test/
+    -
+      name: Coveralls
+      continue-on-error: true
+      env:
+        COVERALLS_REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        luacov-coveralls

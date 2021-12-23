@@ -3,6 +3,34 @@ local assert = require('assertex')
 local testcase = require('testcase')
 local is = require('metamodule.is')
 
+function testcase.isPackageName()
+    -- test that return true
+    for _, v in ipairs({
+        'foo',
+        'foo.bar',
+        'foo.bar.01',
+    }) do
+        assert.is_true(is.packageName(v))
+    end
+
+    -- test that return false
+    for _, v in ipairs({
+        '',
+        'foo.',
+        'Foo',
+        'fooBar01',
+        'foo_bar_baz',
+        true,
+        false,
+        {},
+        1,
+        function()
+        end,
+    }) do
+        assert.is_false(is.packageName(v))
+    end
+end
+
 function testcase.isModuleName()
     -- test that return true
     for _, v in ipairs({
@@ -14,6 +42,7 @@ function testcase.isModuleName()
 
     -- test that return false
     for _, v in ipairs({
+        '',
         'foo',
         'fooBar01',
         true,
@@ -38,6 +67,7 @@ function testcase.isMetamethodName()
 
     -- test that return false
     for _, v in ipairs({
+        '',
         'Foo',
         '_Foo',
         '__Foo',
