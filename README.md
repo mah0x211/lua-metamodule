@@ -18,20 +18,37 @@ luarocks install metamodule
 
 ## Create a Module
 
-### fn = metamodule.new.<ModuleName>(_M, ...)
+### fn = metamodule.new[.ModuleName](_M, ...)
 
-creates a new module constructor
+register the module and returns the constructor.
 
 **Parameters**
 
 - `_M:table`: module table that contains functions and non-function properties.
-- `...:string': embedding module names
+- `...:string`: embedding module names
 
 **Returns**
 
 - `fn:function`: module constructor function.
 
-**e.g.**
+
+### Description
+
+the module name will be registered as the concatenation of the module path specified in the `require` function and 'ModuleName'. If there is no `ModuleName`, only the module path will be registered.
+
+if you want to define the module in a file that is not loaded by the `require` function, you must specify the `ModuleName`.
+
+
+### Constraints
+
+the following reserved words cannot be used in property or method names;
+
+- `constructor`
+- `instanceof`
+- `__index`
+
+
+### Usage
 
 ```lua
 local metamodule = require('metamodule')
@@ -72,7 +89,7 @@ m:say() -- hey metamodule!
 
 ## Dump the metamodule registry
 
-### str = metamodule.dump
+### str = metamodule.dump()
 
 dump the metamodule registry table.
 
