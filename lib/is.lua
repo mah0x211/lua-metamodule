@@ -19,8 +19,30 @@
 -- OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 -- THE SOFTWARE.
 --
+local ipairs = ipairs
 local type = type
+local string = require('stringex')
 local find = string.find
+local split = string.split
+
+local PAT_PKGNAME = '^[a-z0-9]+$'
+
+--- return true if name is a valid package name
+--- @param name string
+--- @return boolean
+local function isPackageName(name)
+    if type(name) ~= 'string' then
+        return false
+    end
+
+    for _, v in ipairs(split(name, '.', true)) do
+        if not find(v, PAT_PKGNAME) then
+            return false
+        end
+    end
+
+    return true
+end
 
 local PAT_MODNAME = '^[A-Z][a-zA-Z0-9]*$'
 
@@ -41,6 +63,7 @@ local function isMetamethodName(name)
 end
 
 return {
+    packageName = isPackageName,
     PAT_MODNAME = PAT_MODNAME,
     moduleName = isModuleName,
     metamethodName = isMetamethodName,
