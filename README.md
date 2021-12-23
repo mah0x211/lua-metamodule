@@ -1,6 +1,9 @@
 lua-metamodule
 ==========
 
+[![test](https://github.com/mah0x211/lua-metamodule/actions/workflows/test.yml/badge.svg)](https://github.com/mah0x211/lua-metamodule/actions/workflows/test.yml)
+[![Coverage Status](https://coveralls.io/repos/github/mah0x211/lua-metamodule/badge.svg?branch=master)](https://coveralls.io/github/mah0x211/lua-metamodule?branch=master)
+
 simple oop module for lua.
 
 ## Installation

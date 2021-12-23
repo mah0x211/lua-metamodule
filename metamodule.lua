@@ -62,8 +62,8 @@ local REGISTRY = {
     -- }
 }
 
-local function DEFAULT_INITIALIZER()
-    -- do nothing
+local function DEFAULT_INITIALIZER(self)
+    return self
 end
 
 local function DEFAULT_TOSTRING(self)

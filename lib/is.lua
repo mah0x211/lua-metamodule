@@ -21,23 +21,23 @@
 --
 local type = type
 local find = string.find
--- constants
-local PAT_MODNAME = '^[a-zA-Z][a-zA-Z0-9]*$'
+
+local PAT_MODNAME = '^[A-Z][a-zA-Z0-9]*$'
 
 --- return true if name is a valid module name
----@param name string
----@return boolean
+--- @param name string
+--- @return boolean
 local function isModuleName(name)
-    return type(name) == 'string' and find(name, PAT_MODNAME)
+    return type(name) == 'string' and find(name, PAT_MODNAME) ~= nil
 end
 
 local PAT_METAMETHOD = '^__[a-z]+$'
 
 --- return true if name starts with two underscores(_)
----@param name string
----@return boolean
+--- @param name string
+--- @return boolean
 local function isMetamethodName(name)
-    return type(name) == 'string' and find(name, PAT_METAMETHOD)
+    return type(name) == 'string' and find(name, PAT_METAMETHOD) ~= nil
 end
 
 return {
