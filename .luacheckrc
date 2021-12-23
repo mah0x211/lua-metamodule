@@ -1,11 +1,6 @@
 std = 'max'
 include_files = {
-    '*.lua',
+    'metamodule.lua',
     'lib/*.lua',
-}
-files['*_spec.lua'] = {
-    std = '+busted'
-}
-files['lib/*_spec.lua'] = {
-    std = '+busted'
+    'test/*.lua',
 }
