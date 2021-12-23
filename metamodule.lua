@@ -122,8 +122,6 @@ local function register(regname, decl)
         decl.metamethods['__tostring'] = DEFAULT_TOSTRING
     end
 
-    local moduleMethods = decl.moduleMethods
-    decl.moduleMethods = nil
     REGISTRY[regname] = decl
 
     -- create metatable
@@ -134,9 +132,28 @@ local function register(regname, decl)
 
     -- create method table
     local index = {}
-    -- append embedded module methods
-    for k, methods in pairs(moduleMethods) do
-        index[k] = methods
+    -- append all embedded module methods to the __index field
+    local embeds = {}
+    for _, name in ipairs(decl.embeds) do
+        embeds[#embeds + 1] = name
+    end
+    while #embeds > 0 do
+        local tbl = {}
+
+        for i = 1, #embeds do
+            local name = embeds[i]
+            local m = REGISTRY[name]
+            local methods = {}
+            for k, v in pairs(m.methods) do
+                methods[k] = v
+            end
+            index[name] = methods
+            -- keeps the embedded module names
+            for _, v in ipairs(m.embeds) do
+                tbl[#tbl + 1] = v
+            end
+        end
+        embeds = tbl
     end
     -- append methods
     for k, v in pairs(decl.methods) do
@@ -210,10 +227,8 @@ local IDENT_FIELDS = {
 --- returns the list of module names and the methods of all modules
 --- @param decl table
 --- @return table moduleNames
---- @return table moduleMethods
 local function embedModules(decl, ...)
     local moduleNames = {}
-    local moduleMethods = {}
     local chkdup = {}
     local vars = {}
     local methods = {}
@@ -262,16 +277,12 @@ local function embedModules(decl, ...)
         end
 
         -- add embedded module methods into methods.<regname> field
-        local mmethods = {}
         for k, v in pairs(m.methods) do
-            mmethods[k] = v
             if not decl.methods[k] then
                 -- overwrite the field of previous embedded module
                 methods[k] = v
             end
         end
-
-        moduleMethods[regname] = mmethods
     end
 
     -- add vars, methods and metamethods field of embedded modules
@@ -287,7 +298,7 @@ local function embedModules(decl, ...)
         end
     end
 
-    return moduleNames, moduleMethods
+    return moduleNames
 end
 
 local RESERVED_FIELDS = {
@@ -390,7 +401,7 @@ local function new(modname, moddecl, ...)
     local decl = inspect(regname, moddecl)
 
     -- embed another modules
-    decl.embeds, decl.moduleMethods = embedModules(decl, ...)
+    decl.embeds = embedModules(decl, ...)
     -- register to registry
     decl.vars._PACKAGE = pkg
     decl.vars._NAME = regname
