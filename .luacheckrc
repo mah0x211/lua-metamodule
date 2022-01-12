@@ -4,3 +4,6 @@ include_files = {
     'lib/*.lua',
     'test/*.lua',
 }
+ignore = {
+    'assert',
+}
