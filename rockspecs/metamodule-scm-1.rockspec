@@ -23,7 +23,6 @@ build = {
         ['metamodule.eval'] = 'lib/eval.lua',
         ['metamodule.is'] = 'lib/is.lua',
         ['metamodule.normalize'] = 'lib/normalize.lua',
-        ['metamodule.pkgname'] = 'lib/pkgname.lua',
         ['metamodule.seal'] = 'lib/seal.lua',
     }
 }

@@ -27,20 +27,42 @@ local find = string.find
 local format = string.format
 local gsub = string.gsub
 local split = string.split
+local trim_space = string.trim_space
+local match = string.match
+local sub = string.sub
 local ipairs = ipairs
 local pairs = pairs
 local setmetatable = setmetatable
+local sort = table.sort
 local tostring = tostring
 local type = type
 local pcall = pcall
 local require = require
 local dump = require('dump')
 local deepcopy = require('metamodule.deepcopy')
+local normalize = require('metamodule.normalize')
 local eval = require('metamodule.eval')
 local is = require('metamodule.is')
-local pkgname = require('metamodule.pkgname')
 local seal = require('metamodule.seal')
 --- constants
+local PKG_PATH = (function()
+    local list = split(package.path, ';', true)
+    local res = {}
+
+    sort(list)
+    for _, path in ipairs(list) do
+        path = trim_space(path)
+        if #path > 0 then
+            path = gsub(path, '%.', '%%.')
+            path = gsub(path, '%-', '%%-')
+            path = gsub(path, '%?', '(.+)')
+            res[#res + 1] = '^' .. path
+        end
+    end
+    res[#res + 1] = '(.+)%.lua'
+
+    return res
+end)()
 local REGISTRY = {
     -- data structure
     -- [<regname>] = {
@@ -361,10 +383,11 @@ local function inspect(regname, moddecl)
 end
 
 --- create constructor of new metamodule
+--- @param pkgname string
 --- @param modname string
 --- @param moddecl table
 --- @return function constructor
-local function new(modname, moddecl, ...)
+local function new(pkgname, modname, moddecl, ...)
     -- verify modname
     if modname ~= nil and not is.moduleName(modname) then
         errorf('module name must be the following pattern string: %q',
@@ -372,15 +395,15 @@ local function new(modname, moddecl, ...)
     end
     -- prepend package-name
     local regname = modname
-    local pkg = pkgname()
-    if not pkg then
+
+    if not pkgname then
         if not modname then
             errorf('module name must not be nil')
         end
     elseif modname then
-        regname = pkg .. '.' .. modname
+        regname = pkgname .. '.' .. modname
     else
-        regname = pkg
+        regname = pkgname
     end
 
     -- verify moddecl
@@ -390,9 +413,9 @@ local function new(modname, moddecl, ...)
 
     -- prevent duplication
     if REGISTRY[regname] then
-        if pkg then
+        if pkgname then
             errorf('module name %q already defined in package %q',
-                   modname or pkg, pkg)
+                   modname or pkgname, pkgname)
         end
         errorf('module name %q already defined', modname)
     end
@@ -403,7 +426,7 @@ local function new(modname, moddecl, ...)
     -- embed another modules
     decl.embeds = embedModules(decl, ...)
     -- register to registry
-    decl.vars._PACKAGE = pkg
+    decl.vars._PACKAGE = pkgname
     decl.vars._NAME = regname
     local newfn, err = register(regname, decl)
     if err then
@@ -422,6 +445,44 @@ local function dumpRegstiry()
     return dump(REGISTRY)
 end
 
+--- converts pathname in package.path to module names
+--- @param s string
+--- @return string|nil
+local function pathname2modname(s)
+    for _, pattern in ipairs(PKG_PATH) do
+        local cap = match(s, pattern)
+        if cap then
+            -- remove '/init' suffix
+            cap = gsub(cap, '/init$', '')
+            return gsub(cap, '/', '.')
+        end
+    end
+end
+
+--- get the package name from the filepath of the 'new' function caller.
+--- the package name is the same as the modname argument of the require function.
+--- returns nil if called by a function other than the require function.
+--- @return string|nil
+local function get_pkgname()
+    -- get a pathname of 'new' function caller
+    local pathname = normalize(sub(getinfo(3, 'nS').source, 2))
+    local lv = 4
+
+    -- traverse call stack to search 'require' function
+    repeat
+        local info = getinfo(lv, 'nS')
+
+        if info then
+            if info.what == 'C' and info.name == 'require' then
+                -- found source of 'require' function
+                return pathname2modname(pathname)
+            end
+            -- check next level
+            lv = lv + 1
+        end
+    until info == nil
+end
+
 return {
     dump = dumpRegstiry,
     new = setmetatable({}, {
@@ -432,12 +493,14 @@ return {
         --- wrapper function to create a new metamodule
         -- usage: metamodule.<modname>([moddecl, [embed_module, ...]])
         __index = function(_, modname)
+            local pkgname = get_pkgname()
             return function(...)
-                return new(modname, ...)
+                return new(pkgname, modname, ...)
             end
         end,
         __call = function(_, ...)
-            return new(nil, ...)
+            local pkgname = get_pkgname()
+            return new(pkgname, nil, ...)
         end,
     }),
 }
