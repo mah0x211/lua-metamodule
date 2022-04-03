@@ -1,4 +1,3 @@
-rockspec_format = '3.0'
 package = 'metamodule'
 version = 'scm-1'
 source = {
