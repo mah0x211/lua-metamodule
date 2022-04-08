@@ -22,14 +22,13 @@
 local concat = table.concat
 local error = error
 local getinfo = debug.getinfo
-local string = require('stringex')
 local find = string.find
 local format = string.format
 local gsub = string.gsub
-local split = string.split
 local match = string.match
 local sub = string.sub
 local trim_space = require('string.trim')
+local split = require('string.split')
 local ipairs = ipairs
 local pairs = pairs
 local setmetatable = setmetatable
@@ -46,7 +45,7 @@ local is = require('metamodule.is')
 local seal = require('metamodule.seal')
 --- constants
 local PKG_PATH = (function()
-    local list = split(package.path, ';', true)
+    local list = split(package.path, ';', nil, true)
     local res = {}
 
     sort(list)

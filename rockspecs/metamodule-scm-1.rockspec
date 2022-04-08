@@ -12,8 +12,8 @@ description = {
 dependencies = {
     'lua >= 5.1',
     'dump ~> 0.1',
-    'stringex >= 0.1',
     'string-trim >= 0.2.0',
+    'string-split >= 0.3.0',
 }
 build = {
     type = 'builtin',
