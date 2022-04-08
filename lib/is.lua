@@ -21,9 +21,8 @@
 --
 local ipairs = ipairs
 local type = type
-local string = require('stringex')
 local find = string.find
-local split = string.split
+local split = require('string.split')
 
 local PAT_PKGNAME = '^[a-z0-9]+$'
 
@@ -35,7 +34,7 @@ local function isPackageName(name)
         return false
     end
 
-    for _, v in ipairs(split(name, '.', true)) do
+    for _, v in ipairs(split(name, '.', nil, true)) do
         if not find(v, PAT_PKGNAME) then
             return false
         end
