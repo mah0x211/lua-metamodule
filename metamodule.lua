@@ -207,7 +207,7 @@ local function loadModule(regname)
 
     -- if it is not registered yet, try to load a module
     if not m then
-        local segs = split(regname, '.', true)
+        local segs = split(regname, '.', nil, true)
         local nseg = #segs
         local pkg = regname
 
