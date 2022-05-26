@@ -67,6 +67,7 @@ local REGISTRY = {
     -- [<regname>] = {
     --     embeds = {
     --         [<list-of-embedded-module-names>, ...]
+    --         [<embedded-module-name>] = <index-number-in-list>, ...]
     --     },
     --     metamethods = {
     --         __tostring = <function>,
@@ -82,7 +83,8 @@ local REGISTRY = {
     --         [_PACKAGE = <string>],
     --         [<name> = <non-function-value>, ...]
     --     }
-    -- }
+    -- },
+    -- [<instanceof-function>] = <regname>
 }
 
 local function DEFAULT_INITIALIZER(self)
@@ -144,6 +146,7 @@ local function register(regname, decl)
     end
 
     REGISTRY[regname] = decl
+    REGISTRY[fn] = regname
 
     -- create metatable
     local metatable = {}
@@ -264,6 +267,7 @@ local function embedModules(decl, ...)
         end
         chkdup[regname] = true
         moduleNames[#moduleNames + 1] = regname
+        moduleNames[regname] = #moduleNames
 
         local m, err = loadModule(regname)
 
@@ -438,12 +442,6 @@ local function new(pkgname, modname, moddecl, ...)
     return newfn
 end
 
---- dump registry table
---- @return string
-local function dumpRegstiry()
-    return dump(REGISTRY)
-end
-
 --- converts pathname in package.path to module names
 --- @param s string
 --- @return string|nil
@@ -482,8 +480,38 @@ local function get_pkgname()
     until info == nil
 end
 
+--- instanceof
+--- @param obj any
+--- @param name? string
+--- @return boolean
+local function instanceof(obj, name)
+    if type(name) ~= 'string' then
+        error('name must be string', 2)
+    elseif type(obj) ~= 'table' or type(obj.instanceof) ~= 'function' then
+        return false
+    end
+
+    local regname = REGISTRY[obj.instanceof]
+    if not regname then
+        -- obj is not metamodule
+        return false
+    elseif regname == name then
+        return true
+    end
+
+    -- search in embeds field
+    return REGISTRY[regname].embeds[name] ~= nil
+end
+
+--- dump registry table
+--- @return string
+local function dumpRegstiry()
+    return dump(REGISTRY)
+end
+
 return {
     dump = dumpRegstiry,
+    instanceof = instanceof,
     new = setmetatable({}, {
         __metatable = 1,
         __newindex = function(_, k)

@@ -66,3 +66,44 @@ function testcase.world_based_on_hello()
     assert.equal(w:say2(), 'world.World say2 world-value')
 end
 
+function testcase.instanceof()
+    local hello
+    local world
+    assert(pcall(function()
+        world = require('world')
+        hello = require('hello')
+    end))
+    local w = world.new()
+    local h = hello.new()
+    local metamodule = require('metamodule')
+
+    -- test that return true
+    assert.is_true(metamodule.instanceof(h, 'hello'))
+    assert.is_true(metamodule.instanceof(w, 'world.World'))
+    assert.is_true(metamodule.instanceof(w, 'hello'))
+
+    -- test that return false
+    assert.is_false(metamodule.instanceof(h, 'foo'))
+
+    -- test that return false if obj is invalid
+    assert.is_false(metamodule.instanceof('foo', 'bar'))
+    assert.is_false(metamodule.instanceof({
+        instanceof = function()
+        end,
+    }, 'hello'))
+
+    -- test that throws an error if name is not string
+    local err = assert.throws(metamodule.instanceof, {})
+    assert.match(err, 'name must be string')
+end
+
+function testcase.dump()
+    assert(pcall(function()
+        require('world')
+        require('hello')
+    end))
+    local metamodule = require('metamodule')
+
+    -- test that return string
+    assert.is_string(metamodule.dump())
+end
