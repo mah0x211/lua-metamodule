@@ -12,9 +12,6 @@ simple oop module for lua.
 luarocks install metamodule
 ```
 
-## Dependencies
-
-- lua-dump https://github.com/mah0x211/lua-dump
 
 ## Create a Module
 
@@ -80,9 +77,17 @@ local newHey = metamodule.new.Hey(Hey, 'Hello')
 
 -- create instances
 local m = newHello('metamodule')
+print(m:instanceof()) -- Hello
+print(metamodule.instanceof(m, 'Hello')) -- true
+print(metamodule.instanceof(m, 'World')) -- false
+
 m:say() -- hello metamodule!
 
 m = newHey('metamodule')
+print(m:instanceof()) -- Hey
+print(metamodule.instanceof(m, 'Hello')) -- true
+print(metamodule.instanceof(m, 'World')) -- false
+print(metamodule.instanceof(m, 'Hey')) -- true
 m:say() -- hey metamodule!
 ```
 
@@ -145,7 +150,8 @@ print(metamodule.dump())
 --     },
 --     Hey = {
 --         embeds = {
---             [1] = "Hello"
+--             [1] = "Hello",
+--             Hello = 1
 --         },
 --         metamethods = {
 --             __tostring = "function: 0x7f801f41ae70"
@@ -159,6 +165,8 @@ print(metamodule.dump())
 --             _NAME = "Hey",
 --             prefix = "hey"
 --         }
---     }
+--     },
+--     ["function: 0x7f801f41c610"] = "Hello",
+--     ["function: 0x7f801f41eb50"] = "Hey"
 -- }
 ```
