@@ -52,6 +52,7 @@ local PKG_PATH = (function()
     for _, path in ipairs(list) do
         path = trim_space(path)
         if #path > 0 then
+            path = normalize(path)
             path = gsub(path, '%.', '%%.')
             path = gsub(path, '%-', '%%-')
             path = gsub(path, '%?', '(.+)')
