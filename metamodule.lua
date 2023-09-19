@@ -251,6 +251,7 @@ local IDENT_FIELDS = {
 --- embed methods and metamethods of modules to module declaration table and
 --- returns the list of module names and the methods of all modules
 --- @param decl table
+--- @param ... string base module names
 --- @return table moduleNames
 local function embedModules(decl, ...)
     local moduleNames = {}
@@ -390,6 +391,7 @@ end
 --- @param pkgname string
 --- @param modname string
 --- @param moddecl table
+--- @param ... string base module names
 --- @return function constructor
 local function new(pkgname, modname, moddecl, ...)
     -- verify modname

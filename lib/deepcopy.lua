@@ -29,7 +29,7 @@ local pairs = pairs
 ---@param key string
 ---@param circular table
 ---@return any value
----@return string error
+---@return string? error
 local function deepCopy(val, key, circular)
     if type(val) ~= 'table' then
         return val

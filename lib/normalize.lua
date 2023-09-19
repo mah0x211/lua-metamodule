@@ -33,13 +33,16 @@ local function normalize(s)
 
     -- remove double slash
     s = gsub(s, '/+', '/')
+    -- extract segments
     for seg in gmatch(s, '[^/]+') do
         if seg == '..' then
+            -- remove last segment if exists
             if len > 0 then
                 res[len] = nil
                 len = len - 1
             end
         elseif seg ~= '.' then
+            -- add segment
             len = len + 1
             res[len] = seg
         end
@@ -47,11 +50,13 @@ local function normalize(s)
 
     local fc = sub(s, 1, 1)
     if fc == '/' then
+        -- absolute path
         return '/' .. concat(res, '/')
     elseif fc == '.' then
+        -- relative path
         return './' .. concat(res, '/')
     end
-
+    -- relative path
     return concat(res, '/')
 end
 
