@@ -11,6 +11,6 @@ function World:say2()
 end
 
 return {
-    new = require('metamodule').new.World(World, 'hello'),
+    new = require('metamodule').new.World(World, 'metamodule.test.hello'),
 }
 

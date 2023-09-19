@@ -22,6 +22,7 @@
 local load = load
 local loadstring = loadstring
 local setfenv = setfenv
+local VERSION = assert(tonumber(string.match(_VERSION, '%d+%.%d+')))
 
 --- evaluate src as a lua script
 ---@param src string
@@ -30,7 +31,7 @@ local setfenv = setfenv
 ---@return function
 ---@return string
 local function eval(src, env, name)
-    if loadstring then
+    if VERSION < 5.2 then
         local fn, err = loadstring(src, name)
 
         if not err and env ~= nil then
