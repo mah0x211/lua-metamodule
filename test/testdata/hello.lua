@@ -4,6 +4,12 @@ local Hello = {
     val = 'hello-value',
 }
 
+function Hello:__index(key)
+    return function()
+        return tostring(self) .. ': __index ' .. key
+    end
+end
+
 function Hello:say()
     return table.concat({
         self._NAME,
