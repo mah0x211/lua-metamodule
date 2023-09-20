@@ -118,24 +118,24 @@ local function errorf(s, ...)
     return error(msg, calllv)
 end
 
---- new_instance create new instance
---- @param constructor function
+-- new_constructor
+--- @param new_table function
 --- @param metatable table
---- @param index table<string, function>?
---- @return table _M
-local function new_instance(constructor, metatable, index)
-    local instance = constructor()
-    instance._STRING = gsub(tostring(instance), 'table', instance._NAME)
-    if index then
-        local __index = metatable.__index
-        metatable.__index = setmetatable(index, {
-            __index = function(_, key)
-                return __index(instance, key)
-            end,
-        })
-    end
+--- @param new_metatable function?
+--- @return fun(...) constructor
+local function new_constructor(new_table, metatable, new_metatable)
+    --- @param ... any
+    --- @return table _M
+    return function(...)
+        local instance = new_table()
+        instance._STRING = gsub(tostring(instance), 'table', instance._NAME)
+        if new_metatable then
+            metatable = new_metatable()
+        end
 
-    return setmetatable(instance, metatable)
+        setmetatable(instance, metatable)
+        return instance:init(...)
+    end
 end
 
 --- register new metamodule
@@ -206,27 +206,67 @@ local function register(regname, decl)
     end
 
     -- set methods to __index field if __index is defined
-    if type(metatable.__index) ~= 'function' then
-        if metatable.__index ~= nil then
-            errorf('__index must be function or nil')
+    local indexfn = metatable.__index
+    local new_metatable
+    if type(indexfn) == 'function' then
+        -- create new metatable generation function
+        --
+        --  return {
+        --      <key> = <id>.metamethods.<key>,
+        --      __index = function(self, key)
+        --          if <id>.methods[key] then
+        --              return <id>.methods[key]
+        --          else
+        --              return __index(self, key)
+        --          end
+        --      end,
+        --  }
+        --
+        local id = '__MM_' .. match(tostring(metatable), '0x%d+')
+        local lines = {
+            'return {',
+            format([[
+    __index = function(self, key)
+        if %s.methods[key] then
+            return %s.methods[key]
+        else
+            return %s.metamethods.__index(self, key)
         end
+    end,]], id, id, id),
+        }
+        metatable.__index = nil
+        for k in pairs(metatable) do
+            lines[#lines + 1] = format('    %s = %s.metamethods.%s,', k, id, k)
+        end
+        metatable.__index = indexfn
+        lines[#lines + 1] = '}'
+        src = concat(lines, '\n')
+        new_metatable, err = eval(src, {
+            [id] = {
+                methods = index,
+                metamethods = metatable,
+            },
+        })
+        if err then
+            return nil, err
+        end
+    elseif indexfn ~= nil then
+        errorf('__index must be function or nil')
+    else
         metatable.__index = index
         index = nil
     end
 
     -- create new vars table generation function
     src = format('return %s', dump(decl.vars))
-    local constructor
-    constructor, err = eval(src)
+    local new_table
+    new_table, err = eval(src)
     if err then
         return nil, err
     end
 
     -- create constructor
-    return function(...)
-        local _M = new_instance(constructor, metatable, index)
-        return _M:init(...)
-    end
+    return new_constructor(new_table, metatable, new_metatable)
 end
 
 --- load registered module
