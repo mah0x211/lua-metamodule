@@ -38,9 +38,10 @@ local function eval(src, env, name)
             setfenv(fn, env)
         end
         return fn, err
+    elseif env ~= nil then
+        return load(src, name, 't', env)
     end
-
-    return load(src, name, 't', env)
+    return load(src, name, 't')
 end
 
 return eval

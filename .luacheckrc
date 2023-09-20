@@ -6,4 +6,6 @@ include_files = {
 }
 ignore = {
     'assert',
+    -- Value assigned to a local variable is unused
+    '311',
 }
