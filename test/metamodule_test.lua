@@ -44,6 +44,9 @@ function testcase.hello()
 
     -- test that call method
     assert.equal(h:say(), 'metamodule.test.hello hello-value')
+
+    -- test that call __index metamethod
+    assert.equal(h:foo(), tostring(h) .. ': __index foo')
 end
 
 function testcase.world_based_on_hello()
@@ -77,6 +80,9 @@ function testcase.world_based_on_hello()
 
     -- test that call method
     assert.equal(w:say2(), 'metamodule.test.world.World say2 world-value')
+
+    -- test that call __index metamethod
+    assert.equal(w:bar(), tostring(w) .. ': __index bar')
 end
 
 function testcase.instanceof()

@@ -118,6 +118,26 @@ local function errorf(s, ...)
     return error(msg, calllv)
 end
 
+--- new_instance create new instance
+--- @param constructor function
+--- @param metatable table
+--- @param index table<string, function>?
+--- @return table _M
+local function new_instance(constructor, metatable, index)
+    local instance = constructor()
+    instance._STRING = gsub(tostring(instance), 'table', instance._NAME)
+    if index then
+        local __index = metatable.__index
+        metatable.__index = setmetatable(index, {
+            __index = function(_, key)
+                return __index(instance, key)
+            end,
+        })
+    end
+
+    return setmetatable(instance, metatable)
+end
+
 --- register new metamodule
 --- @param regname string
 --- @param decl table
@@ -131,11 +151,11 @@ local function register(regname, decl)
 
     -- set <instanceof> method
     local src = format('return %q', regname)
-    local fn, err = eval(src)
+    local instanceof, err = eval(src)
     if err then
         return nil, err
     end
-    decl.methods['instanceof'] = fn
+    decl.methods['instanceof'] = instanceof
 
     -- set default <init> method
     if not decl.methods['init'] then
@@ -147,7 +167,7 @@ local function register(regname, decl)
     end
 
     REGISTRY[regname] = decl
-    REGISTRY[fn] = regname
+    REGISTRY[instanceof] = regname
 
     -- create metatable
     local metatable = {}
@@ -184,20 +204,27 @@ local function register(regname, decl)
     for k, v in pairs(decl.methods) do
         index[k] = v
     end
-    metatable.__index = index
+
+    -- set methods to __index field if __index is defined
+    if type(metatable.__index) ~= 'function' then
+        if metatable.__index ~= nil then
+            errorf('__index must be function or nil')
+        end
+        metatable.__index = index
+        index = nil
+    end
 
     -- create new vars table generation function
     src = format('return %s', dump(decl.vars))
-    fn, err = eval(src)
+    local constructor
+    constructor, err = eval(src)
     if err then
         return nil, err
     end
 
     -- create constructor
     return function(...)
-        local _M = fn()
-        _M._STRING = gsub(tostring(_M), 'table', _M._NAME)
-        setmetatable(_M, metatable)
+        local _M = new_instance(constructor, metatable, index)
         return _M:init(...)
     end
 end
@@ -205,7 +232,7 @@ end
 --- load registered module
 --- @param regname string
 --- @return table module
---- @return string error
+--- @return string? error
 local function loadModule(regname)
     local m = REGISTRY[regname]
 
@@ -331,7 +358,36 @@ end
 local RESERVED_FIELDS = {
     ['constructor'] = true,
     ['instanceof'] = true,
-    ['__index'] = true,
+}
+
+local METAFIELD_TYPES = {
+    __add = 'function',
+    __sub = 'function',
+    __mul = 'function',
+    __div = 'function',
+    __mod = 'function',
+    __pow = 'function',
+    __unm = 'function',
+    __idiv = 'function',
+    __band = 'function',
+    __bor = 'function',
+    __bxor = 'function',
+    __bnot = 'function',
+    __shl = 'function',
+    __shr = 'function',
+    __concat = 'function',
+    __len = 'function',
+    __eq = 'function',
+    __lt = 'function',
+    __le = 'function',
+    __index = 'function',
+    __newindex = 'function',
+    __call = 'function',
+    __tostring = 'function',
+    __gc = 'function',
+    __mode = 'string',
+    __name = 'string',
+    __close = 'function',
 }
 
 --- inspect module declaration table
@@ -347,36 +403,42 @@ local function inspect(regname, moddecl)
     local metamethods = {}
 
     for k, v in pairs(moddecl) do
+        local vt = type(v)
+
         if type(k) ~= 'string' then
             errorf('field name must be string: %q', tostring(k))
         elseif IDENT_FIELDS[k] or RESERVED_FIELDS[k] then
             errorf('reserved field %q cannot be used', k)
-        elseif k == 'init' then
-            if type(v) ~= 'function' then
-                errorf('field "init" must be function')
+        end
+
+        if is.metamethodName(k) then
+            if vt ~= 'function' then
+                if METAFIELD_TYPES[k] == 'function' then
+                    errorf('the type of metatable field %q must be %s', k,
+                           METAFIELD_TYPES[k])
+                end
+
+                -- use as variable
+                local cpval, err = deepcopy(v, regname .. '.' .. k, circular)
+                if err then
+                    errorf('field %q cannot be used: %s', k, err)
+                end
+                v = cpval
             end
+            metamethods[k] = v
+        elseif vt == 'function' then
             -- use as method
             methods[k] = v
-        elseif type(v) ~= 'function' then
+        elseif k == 'init' then
+            errorf('field "init" must be function')
+        else
             -- use as variable
             local cpval, err = deepcopy(v, regname .. '.' .. k, circular)
             if err then
                 errorf('field %q cannot be used: %s', k, err)
             end
-
-            if is.metamethodName(k) then
-                -- use as metamethod variable
-                metamethods[k] = cpval
-            else
-                -- use as variable
-                vars[k] = cpval
-            end
-        elseif is.metamethodName(k) then
-            -- use as metamethod
-            metamethods[k] = v
-        else
-            -- use as method
-            methods[k] = v
+            -- use as variable
+            vars[k] = cpval
         end
     end
 
