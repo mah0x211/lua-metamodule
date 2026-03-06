@@ -22,6 +22,7 @@
 local concat = table.concat
 local error = error
 local getinfo = debug.getinfo
+local getlocal = debug.getlocal
 local find = string.find
 local format = string.format
 local gsub = string.gsub
@@ -144,7 +145,8 @@ end
 --- @return function constructor
 --- @return string? error
 local function register(regname, decl)
-    -- already registered
+    -- already registered (may happen if an embedded module's require() registers
+    -- the same regname as a side effect between new()'s pre-check and this call)
     if REGISTRY[regname] then
         return nil, format('%q is already registered', regname)
     end
@@ -206,6 +208,11 @@ local function register(regname, decl)
     end
 
     -- set methods to __index field if __index is defined
+    -- indexfn is always function or nil here: inspect() enforces
+    -- METAFIELD_TYPES['__index'] == 'function', and embedModules() only copies
+    -- from already-validated modules.  decl.metamethods is a local table that
+    -- only inspect() and embedModules() write to, so no other code path can
+    -- introduce a non-function, non-nil __index.
     local indexfn = metatable.__index
     local new_metatable
     if type(indexfn) == 'function' then
@@ -250,8 +257,6 @@ local function register(regname, decl)
         if err then
             return nil, err
         end
-    elseif indexfn ~= nil then
-        errorf('__index must be function or nil')
     else
         metatable.__index = index
         index = nil
@@ -566,23 +571,38 @@ end
 --- returns nil if called by a function other than the require function.
 --- @return string|nil
 local function get_pkgname()
-    -- get a pathname of 'new' function caller
-    local pathname = normalize(sub(getinfo(3, 'nS').source, 2))
-    local lv = 4
-
-    -- traverse call stack to search 'require' function
-    repeat
+    -- get_pkgname() is only called from __call (lv 2) or __index (lv 2),
+    -- so lv 2 is always the metamodule frame and is skipped.
+    -- the require C frame is at most at lv 4:
+    --   non-TCO : lv3=module_file, lv4=require
+    --   TCO 5.2+: lv3=require
+    --   TCO 5.1 : lv3=tail_frame,  lv4=require
+    -- (lua 5.1 inserts a synthetic 'tail' frame with source='=(tail call)'
+    --  in place of the eliminated module frame)
+    local pathname
+    for lv = 3, 4 do
         local info = getinfo(lv, 'nS')
+        if not info then
+            break
+        end
 
-        if info then
-            if info.what == 'C' and info.name == 'require' then
-                -- found source of 'require' function
+        if not pathname and sub(info.source, 1, 1) == '@' and
+            not find(info.source, 'metamodule') then
+            -- only consider file-based sources (starts with '@').
+            -- synthetic 'tail' frames in lua 5.1 have source='=(tail call)'
+            -- and must be skipped.
+            pathname = normalize(sub(info.source, 2))
+        elseif info.what == 'C' and info.name == 'require' then
+            if pathname then
+                -- normal case: found the module file's Lua frame
                 return pathname2modname(pathname)
             end
-            -- check next level
-            lv = lv + 1
+            -- TCO case: the module file's Lua frame was eliminated.
+            -- the module name is available as require's first argument.
+            local _, modname = getlocal(lv, 1)
+            return modname
         end
-    until info == nil
+    end
 end
 
 --- instanceof
