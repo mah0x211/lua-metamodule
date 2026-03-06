@@ -145,7 +145,8 @@ end
 --- @return function constructor
 --- @return string? error
 local function register(regname, decl)
-    -- already registered
+    -- already registered (may happen if an embedded module's require() registers
+    -- the same regname as a side effect between new()'s pre-check and this call)
     if REGISTRY[regname] then
         return nil, format('%q is already registered', regname)
     end
@@ -207,6 +208,11 @@ local function register(regname, decl)
     end
 
     -- set methods to __index field if __index is defined
+    -- indexfn is always function or nil here: inspect() enforces
+    -- METAFIELD_TYPES['__index'] == 'function', and embedModules() only copies
+    -- from already-validated modules.  decl.metamethods is a local table that
+    -- only inspect() and embedModules() write to, so no other code path can
+    -- introduce a non-function, non-nil __index.
     local indexfn = metatable.__index
     local new_metatable
     if type(indexfn) == 'function' then
@@ -251,8 +257,6 @@ local function register(regname, decl)
         if err then
             return nil, err
         end
-    elseif indexfn ~= nil then
-        errorf('__index must be function or nil')
     else
         metatable.__index = index
         index = nil
