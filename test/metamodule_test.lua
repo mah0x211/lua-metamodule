@@ -366,13 +366,17 @@ end
 -- =============================================================================
 
 function testcase.instance_has_required_fields()
-    -- every instance has _NAME, _PACKAGE, _STRING set automatically
+    -- every instance has _NAME and _PACKAGE set automatically;
+    -- _STRING is computed lazily on the first tostring() call
     local new_m = mm.new.InstFields({})
     local obj = new_m()
 
     assert.equal(obj._NAME, 'InstFields')
     assert.is_nil(obj._PACKAGE) -- no package when called outside require
-    assert.match(obj._STRING, '^InstFields: 0x', false)
+    assert.is_nil(obj._STRING)  -- not yet computed (lazy)
+    local str = tostring(obj)
+    assert.match(str, '^InstFields: 0x', false)
+    assert.equal(obj._STRING, str) -- now cached
 end
 
 function testcase.instance_default_init_returns_self()

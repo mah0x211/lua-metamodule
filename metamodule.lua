@@ -23,6 +23,8 @@ local concat = table.concat
 local error = error
 local getinfo = debug.getinfo
 local getlocal = debug.getlocal
+local getmetatable = debug.getmetatable
+local setmetatable = debug.setmetatable
 local find = string.find
 local format = string.format
 local gsub = string.gsub
@@ -32,7 +34,6 @@ local trim_space = require('string.trim')
 local split = require('string.split')
 local ipairs = ipairs
 local pairs = pairs
-local setmetatable = setmetatable
 local sort = table.sort
 local tostring = tostring
 local type = type
@@ -93,8 +94,21 @@ local function DEFAULT_INITIALIZER(self)
     return self
 end
 
+-- Compute _STRING lazily on the first tostring() call.
+-- Temporarily strip the metatable so that tostring(self) returns the raw
+-- "table: 0x..." address string without triggering __tostring recursion.
+-- debug.setmetatable is used (instead of setmetatable) to bypass any
+-- __metatable protection the user may have set on the module.
 local function DEFAULT_TOSTRING(self)
-    return self._STRING
+    local s = rawget(self, '_STRING')
+    if not s then
+        local mt = getmetatable(self)
+        setmetatable(self, nil)
+        s = gsub(tostring(self), 'table', rawget(self, '_NAME'))
+        setmetatable(self, mt)
+        rawset(self, '_STRING', s)
+    end
+    return s
 end
 
 --- register new metamodule
@@ -129,7 +143,6 @@ local function new_constructor(new_table, metatable, new_metatable)
     --- @return table _M
     return function(...)
         local instance = new_table()
-        instance._STRING = gsub(tostring(instance), 'table', instance._NAME)
         if new_metatable then
             metatable = new_metatable()
         end
