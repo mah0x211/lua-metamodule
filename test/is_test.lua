@@ -1,8 +1,9 @@
 require('luacov')
 local testcase = require('testcase')
+local assert = require('assert')
 local is = require('metamodule.is')
 
-function testcase.isPackageName()
+function testcase.package_name()
     -- test that return true
     for _, v in ipairs({
         'foo',
@@ -30,7 +31,7 @@ function testcase.isPackageName()
     end
 end
 
-function testcase.isModuleName()
+function testcase.module_name()
     -- test that return true
     for _, v in ipairs({
         'Foo',
@@ -55,7 +56,7 @@ function testcase.isModuleName()
     end
 end
 
-function testcase.isMetamethodName()
+function testcase.metamethod_name()
     -- test that return true
     for _, v in ipairs({
         '__tostring',
