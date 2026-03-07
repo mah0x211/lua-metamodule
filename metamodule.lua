@@ -152,6 +152,38 @@ local function new_constructor(new_table, metatable, new_metatable)
     end
 end
 
+--- build the flat __index table from decl.embeds (BFS) then decl.methods
+--- @param decl table
+--- @return table index
+local function build_method_index(decl)
+    local index = {}
+    local queue = {}
+    for _, name in ipairs(decl.embeds) do
+        queue[#queue + 1] = name
+    end
+    while #queue > 0 do
+        local next_queue = {}
+        for i = 1, #queue do
+            local name = queue[i]
+            local m = REGISTRY[name]
+            local methods = {}
+            for k, v in pairs(m.methods) do
+                methods[k] = v
+            end
+            index[name] = methods
+            for _, v in ipairs(m.embeds) do
+                next_queue[#next_queue + 1] = v
+            end
+        end
+        queue = next_queue
+    end
+    -- own methods take priority (written last to overwrite embedded entries)
+    for k, v in pairs(decl.methods) do
+        index[k] = v
+    end
+    return index
+end
+
 --- register new metamodule
 --- @param regname string
 --- @param decl table
@@ -190,35 +222,7 @@ local function register(regname, decl)
         metatable[k] = v
     end
 
-    -- create method table
-    local index = {}
-    -- append all embedded module methods to the __index field
-    local embeds = {}
-    for _, name in ipairs(decl.embeds) do
-        embeds[#embeds + 1] = name
-    end
-    while #embeds > 0 do
-        local tbl = {}
-
-        for i = 1, #embeds do
-            local name = embeds[i]
-            local m = REGISTRY[name]
-            local methods = {}
-            for k, v in pairs(m.methods) do
-                methods[k] = v
-            end
-            index[name] = methods
-            -- keeps the embedded module names
-            for _, v in ipairs(m.embeds) do
-                tbl[#tbl + 1] = v
-            end
-        end
-        embeds = tbl
-    end
-    -- append methods
-    for k, v in pairs(decl.methods) do
-        index[k] = v
-    end
+    local index = build_method_index(decl)
 
     -- set methods to __index field if __index is defined
     -- indexfn is always function or nil here: inspect() enforces
