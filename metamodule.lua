@@ -184,6 +184,74 @@ local function build_method_index(decl)
     return index
 end
 
+--- build the metatable from decl.metamethods.
+--- when __index is a function, also generate a new_metatable factory via eval
+--- so that each constructor call gets a fresh metatable with the correct closure.
+--- @param decl table
+--- @param index table  flat method index from build_method_index
+--- @return table metatable
+--- @return function? new_metatable
+--- @return string? error
+local function build_metatable(decl, index)
+    -- copy all metamethods into a plain metatable table
+    local metatable = {}
+    for k, v in pairs(decl.metamethods) do
+        metatable[k] = v
+    end
+
+    -- indexfn is always function or nil here: inspect() enforces
+    -- METAFIELD_TYPES['__index'] == 'function', and embedModules() only copies
+    -- from already-validated modules.
+    local indexfn = metatable.__index
+    if type(indexfn) ~= 'function' then
+        metatable.__index = index
+        return metatable, nil, nil
+    end
+
+    -- __index is a function: generate a dynamic metatable factory via eval.
+    --
+    --  return {
+    --      <key> = <id>.metamethods.<key>,
+    --      __index = function(self, key)
+    --          if <id>.methods[key] then
+    --              return <id>.methods[key]
+    --          else
+    --              return __index(self, key)
+    --          end
+    --      end,
+    --  }
+    --
+    local id = '__MM_' .. match(tostring(metatable), '0x%d+')
+    local lines = {
+        'return {',
+        format([[
+    __index = function(self, key)
+        if %s.methods[key] then
+            return %s.methods[key]
+        else
+            return %s.metamethods.__index(self, key)
+        end
+    end,]], id, id, id),
+    }
+    metatable.__index = nil
+    for k in pairs(metatable) do
+        lines[#lines + 1] = format('    %s = %s.metamethods.%s,', k, id, k)
+    end
+    metatable.__index = indexfn
+    lines[#lines + 1] = '}'
+    local src = concat(lines, '\n')
+    local new_metatable, err = eval(src, {
+        [id] = {
+            methods = index,
+            metamethods = metatable,
+        },
+    })
+    if err then
+        return nil, nil, err
+    end
+    return metatable, new_metatable, nil
+end
+
 --- register new metamodule
 --- @param regname string
 --- @param decl table
@@ -216,67 +284,11 @@ local function register(regname, decl)
     REGISTRY[regname] = decl
     REGISTRY[instanceof] = regname
 
-    -- create metatable
-    local metatable = {}
-    for k, v in pairs(decl.metamethods) do
-        metatable[k] = v
-    end
-
     local index = build_method_index(decl)
-
-    -- set methods to __index field if __index is defined
-    -- indexfn is always function or nil here: inspect() enforces
-    -- METAFIELD_TYPES['__index'] == 'function', and embedModules() only copies
-    -- from already-validated modules.  decl.metamethods is a local table that
-    -- only inspect() and embedModules() write to, so no other code path can
-    -- introduce a non-function, non-nil __index.
-    local indexfn = metatable.__index
-    local new_metatable
-    if type(indexfn) == 'function' then
-        -- create new metatable generation function
-        --
-        --  return {
-        --      <key> = <id>.metamethods.<key>,
-        --      __index = function(self, key)
-        --          if <id>.methods[key] then
-        --              return <id>.methods[key]
-        --          else
-        --              return __index(self, key)
-        --          end
-        --      end,
-        --  }
-        --
-        local id = '__MM_' .. match(tostring(metatable), '0x%d+')
-        local lines = {
-            'return {',
-            format([[
-    __index = function(self, key)
-        if %s.methods[key] then
-            return %s.methods[key]
-        else
-            return %s.metamethods.__index(self, key)
-        end
-    end,]], id, id, id),
-        }
-        metatable.__index = nil
-        for k in pairs(metatable) do
-            lines[#lines + 1] = format('    %s = %s.metamethods.%s,', k, id, k)
-        end
-        metatable.__index = indexfn
-        lines[#lines + 1] = '}'
-        src = concat(lines, '\n')
-        new_metatable, err = eval(src, {
-            [id] = {
-                methods = index,
-                metamethods = metatable,
-            },
-        })
-        if err then
-            return nil, err
-        end
-    else
-        metatable.__index = index
-        index = nil
+    local metatable, new_metatable
+    metatable, new_metatable, err = build_metatable(decl, index)
+    if err then
+        return nil, err
     end
 
     -- create new vars table generation function
