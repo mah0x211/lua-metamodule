@@ -333,6 +333,17 @@ local IDENT_FIELDS = {
     ['_STRING'] = true,
 }
 
+--- copy entries from src into dst, skipping keys that already exist in dst
+--- @param src table
+--- @param dst table
+local function merge_no_overwrite(src, dst)
+    for k, v in pairs(src) do
+        if not dst[k] then
+            dst[k] = v
+        end
+    end
+end
+
 --- embed methods and metamethods of modules to module declaration table and
 --- returns the list of module names and the methods of all modules
 --- @param decl table
@@ -398,17 +409,9 @@ local function embedModules(decl, ...)
     end
 
     -- add vars, methods and metamethods field of embedded modules
-    for src, dst in pairs({
-        [vars] = decl.vars,
-        [methods] = decl.methods,
-        [metamethods] = decl.metamethods,
-    }) do
-        for k, v in pairs(src) do
-            if not dst[k] then
-                dst[k] = v
-            end
-        end
-    end
+    merge_no_overwrite(vars, decl.vars)
+    merge_no_overwrite(methods, decl.methods)
+    merge_no_overwrite(metamethods, decl.metamethods)
 
     return moduleNames
 end
