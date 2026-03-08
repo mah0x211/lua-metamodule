@@ -23,8 +23,9 @@ local concat = table.concat
 local error = error
 local getinfo = debug.getinfo
 local getlocal = debug.getlocal
-local getmetatable = debug.getmetatable
-local setmetatable = debug.setmetatable
+local dbg_getmt = debug.getmetatable
+local dbg_setmt = debug.setmetatable
+local setmetatable = setmetatable
 local find = string.find
 local format = string.format
 local gsub = string.gsub
@@ -102,10 +103,10 @@ end
 local function DEFAULT_TOSTRING(self)
     local s = rawget(self, '_STRING')
     if not s then
-        local mt = getmetatable(self)
-        setmetatable(self, nil)
+        local mt = dbg_getmt(self)
+        dbg_setmt(self, nil)
         s = gsub(tostring(self), 'table', rawget(self, '_NAME'))
-        setmetatable(self, mt)
+        dbg_setmt(self, mt)
         rawset(self, '_STRING', s)
     end
     return s
