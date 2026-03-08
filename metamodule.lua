@@ -31,7 +31,6 @@ local format = string.format
 local gsub = string.gsub
 local match = string.match
 local sub = string.sub
-local trim_space = require('string.trim')
 local split = require('string.split')
 local ipairs = ipairs
 local pairs = pairs
@@ -53,7 +52,7 @@ local PKG_PATH = (function()
 
     sort(list)
     for _, path in ipairs(list) do
-        path = trim_space(path)
+        path = match(path, '^%s*(.-)%s*$')
         if #path > 0 then
             path = normalize(path)
             path = gsub(path, '%.', '%%.')

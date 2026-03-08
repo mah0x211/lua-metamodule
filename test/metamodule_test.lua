@@ -373,7 +373,7 @@ function testcase.instance_has_required_fields()
 
     assert.equal(obj._NAME, 'InstFields')
     assert.is_nil(obj._PACKAGE) -- no package when called outside require
-    assert.is_nil(obj._STRING)  -- not yet computed (lazy)
+    assert.is_nil(obj._STRING) -- not yet computed (lazy)
     local str = tostring(obj)
     assert.match(str, '^InstFields: 0x', false)
     assert.equal(obj._STRING, str) -- now cached
