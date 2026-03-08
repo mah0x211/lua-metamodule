@@ -27,7 +27,7 @@ local split = require('string.split')
 local PAT_PKGNAME = '^[a-z0-9]+$'
 
 --- return true if name is a valid package name
---- @param name string
+--- @param name any
 --- @return boolean
 local function isPackageName(name)
     if type(name) ~= 'string' then
@@ -46,7 +46,7 @@ end
 local PAT_MODNAME = '^[A-Z][a-zA-Z0-9]*$'
 
 --- return true if name is a valid module name
---- @param name string
+--- @param name any
 --- @return boolean
 local function isModuleName(name)
     return type(name) == 'string' and find(name, PAT_MODNAME) ~= nil
@@ -54,8 +54,8 @@ end
 
 local PAT_METAMETHOD = '^__[a-z]+$'
 
---- return true if name starts with two underscores(_)
---- @param name string
+--- return true if name matches the metamethod name pattern (__xxx)
+--- @param name any
 --- @return boolean
 local function isMetamethodName(name)
     return type(name) == 'string' and find(name, PAT_METAMETHOD) ~= nil

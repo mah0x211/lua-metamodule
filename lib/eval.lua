@@ -26,10 +26,10 @@ local VERSION = assert(tonumber(string.match(_VERSION, '%d+%.%d+')))
 
 --- evaluate src as a lua script
 ---@param src string
----@param env table
----@param name string
----@return function
----@return string
+---@param env? table
+---@param name? string
+---@return function?
+---@return string?
 local function eval(src, env, name)
     if VERSION < 5.2 then
         local fn, err = loadstring(src, name)

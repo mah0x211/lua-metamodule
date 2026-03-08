@@ -112,9 +112,9 @@ local function DEFAULT_TOSTRING(self)
     return s
 end
 
---- register new metamodule
---- @param s string
---- @vararg any
+--- format a message and raise an error at the nearest non-metamodule call site
+--- @param s string format string
+--- @param ... any  format arguments
 local function errorf(s, ...)
     local msg = format(s, ...)
     local calllv = 2
@@ -190,9 +190,9 @@ end
 --- so that each constructor call gets a fresh metatable with the correct closure.
 --- @param decl table
 --- @param index table  flat method index from build_method_index
---- @return table metatable
+--- @return table?    metatable
 --- @return function? new_metatable
---- @return string? error
+--- @return string?   error
 local function build_metatable(decl, index)
     -- copy all metamethods into a plain metatable table
     local metatable = {}
@@ -256,8 +256,8 @@ end
 --- register new metamodule
 --- @param regname string
 --- @param decl table
---- @return function constructor
---- @return string? error
+--- @return function? constructor
+--- @return string?   error
 local function register(regname, decl)
     -- already registered (may happen if an embedded module's require() registers
     -- the same regname as a side effect between new()'s pre-check and this call)
@@ -306,7 +306,7 @@ end
 
 --- load registered module
 --- @param regname string
---- @return table module
+--- @return table?  module
 --- @return string? error
 local function loadModule(regname)
     local m = REGISTRY[regname]
@@ -361,11 +361,11 @@ local function merge_no_overwrite(src, dst)
     end
 end
 
---- embed methods and metamethods of modules to module declaration table and
---- returns the list of module names and the methods of all modules
+--- embed vars, methods and metamethods from each listed module into decl.
+--- own fields always take priority over embedded fields.
 --- @param decl table
---- @param ... string base module names
---- @return table moduleNames
+--- @param ... string  names of modules to embed
+--- @return table embeds  list of embedded module names (also keyed by name)
 local function embedModules(decl, ...)
     local moduleNames = {}
     local chkdup = {}
@@ -471,7 +471,7 @@ local METAFIELD_TYPES = {
 --- inspect module declaration table
 --- @param regname string
 --- @param moddecl table
---- @return table delc
+--- @return table decl
 local function inspect(regname, moddecl)
     local circular = {
         [tostring(moddecl)] = regname,
@@ -528,10 +528,10 @@ local function inspect(regname, moddecl)
 end
 
 --- create constructor of new metamodule
---- @param pkgname string
---- @param modname string
+--- @param pkgname string?  package name (nil when not called via require)
+--- @param modname string?  module name (nil when using metamodule.new(decl) form)
 --- @param moddecl table
---- @param ... string base module names
+--- @param ... string  names of modules to embed
 --- @return function constructor
 local function new(pkgname, modname, moddecl, ...)
     -- verify modname
@@ -587,7 +587,7 @@ end
 
 --- converts pathname in package.path to module names
 --- @param s string
---- @return string|nil
+--- @return string?
 local function pathname2modname(s)
     for _, pattern in ipairs(PKG_PATH) do
         local cap = match(s, pattern)
@@ -602,7 +602,7 @@ end
 --- get the package name from the filepath of the 'new' function caller.
 --- the package name is the same as the modname argument of the require function.
 --- returns nil if called by a function other than the require function.
---- @return string|nil
+--- @return string?
 local function get_pkgname()
     -- get_pkgname() is only called from __call (lv 2) or __index (lv 2),
     -- so lv 2 is always the metamodule frame and is skipped.
@@ -640,7 +640,7 @@ end
 
 --- instanceof
 --- @param obj any
---- @param name? string
+--- @param name string
 --- @return boolean
 local function instanceof(obj, name)
     if type(name) ~= 'string' then
@@ -663,12 +663,12 @@ end
 
 --- dump registry table
 --- @return string
-local function dumpRegstiry()
+local function dumpRegistry()
     return dump(REGISTRY)
 end
 
 return {
-    dump = dumpRegstiry,
+    dump = dumpRegistry,
     instanceof = instanceof,
     new = setmetatable({}, {
         __metatable = 1,
