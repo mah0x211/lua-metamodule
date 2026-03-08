@@ -31,7 +31,7 @@ local format = string.format
 local gsub = string.gsub
 local match = string.match
 local sub = string.sub
-local split = require('string.split')
+local split = require('metamodule.split')
 local ipairs = ipairs
 local pairs = pairs
 local sort = table.sort
@@ -47,7 +47,7 @@ local is = require('metamodule.is')
 local seal = require('metamodule.seal')
 --- constants
 local PKG_PATH = (function()
-    local list = split(package.path, ';', nil, true)
+    local list = split(package.path, ';')
     local res = {}
 
     sort(list)
@@ -312,7 +312,7 @@ local function loadModule(regname)
 
     -- if it is not registered yet, try to load a module
     if not m then
-        local segs = split(regname, '.', nil, true)
+        local segs = split(regname, '.')
         local nseg = #segs
         local pkg = regname
 
