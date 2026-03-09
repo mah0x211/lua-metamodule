@@ -90,6 +90,9 @@ local REGISTRY = {
     -- [<instanceof-function>] = <regname>
 }
 
+--- tracks modules currently being registered (used to detect circular embedding)
+local REGISTERING = {}
+
 local function DEFAULT_INITIALIZER(self)
     return self
 end
@@ -309,35 +312,41 @@ end
 --- @return string? error
 local function loadModule(regname)
     local m = REGISTRY[regname]
-
-    -- if it is not registered yet, try to load a module
-    if not m then
-        local segs = split(regname, '.')
-        local nseg = #segs
-        local pkg = regname
-
-        -- remove module-name
-        if nseg > 1 and is.moduleName(segs[nseg]) then
-            pkg = concat(segs, '.', 1, nseg - 1)
-        end
-
-        if is.packageName(pkg) then
-            -- load package in protected mode
-            local ok, err = pcall(function()
-                require(pkg)
-            end)
-
-            if not ok then
-                return nil, err
-            end
-
-            -- get loaded module
-            m = REGISTRY[regname]
-        end
+    if m then
+        return m
     end
 
+    local segs = split(regname, '.')
+    local nseg = #segs
+    local pkg = regname
+    -- remove module-name
+    if nseg > 1 and is.moduleName(segs[nseg]) then
+        pkg = concat(segs, '.', 1, nseg - 1)
+    end
+
+    if not is.packageName(pkg) then
+        return nil, 'invalid module name'
+    end
+
+    -- loadModule is always called from within new(), so REGISTERING[regname] is
+    -- already set for any module currently being registered. if it is set here,
+    -- the caller is trying to embed a module that is still being registered,
+    -- which means there is a circular embedding.
+    if REGISTERING[regname] then
+        return nil, 'circular embedding detected'
+    end
+
+    -- load package in protected mode
+    local ok, err = pcall(function()
+        require(pkg)
+    end)
+    if not ok then
+        return nil, err
+    end
+
+    m = REGISTRY[regname]
     if not m then
-        return nil, 'not found'
+        return nil, 'not a metamodule'
     end
 
     return m
@@ -568,8 +577,17 @@ local function new(pkgname, modname, moddecl, ...)
     -- inspect module declaration table
     local decl = inspect(regname, moddecl)
 
-    -- embed another modules
-    decl.embeds = embedModules(decl, ...)
+    -- embed another modules; mark as being registered so loadModule() can detect
+    -- circular embedding (A embeds B, B embeds A) and report a clear error.
+    -- pcall ensures REGISTERING is always cleaned up, even if embedModules errors.
+    REGISTERING[regname] = true
+    local ok, embeds_or_err = pcall(embedModules, decl, ...)
+    REGISTERING[regname] = nil
+    if not ok then
+        -- embeds_or_err already contains file:line from errorf; re-raise as-is
+        error(embeds_or_err, 0)
+    end
+    decl.embeds = embeds_or_err
     -- register to registry
     decl.vars._PACKAGE = pkgname
     decl.vars._NAME = regname
