@@ -19,51 +19,24 @@
 -- OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 -- THE SOFTWARE.
 --
-local ipairs = ipairs
-local type = type
 local find = string.find
-local split = require('metamodule.split')
+local sub = string.sub
 
-local PAT_PKGNAME = '^[a-z0-9]+$'
-
---- return true if name is a valid package name
---- @param name any
---- @return boolean
-local function isPackageName(name)
-    if type(name) ~= 'string' then
-        return false
+--- split s into a list of substrings using sep as a literal separator
+--- @param s string
+--- @param sep string
+--- @return string[]
+local function split(s, sep)
+    local res = {}
+    local i = 1
+    local j = find(s, sep, 1, true)
+    while j do
+        res[#res + 1] = sub(s, i, j - 1)
+        i = j + #sep
+        j = find(s, sep, i, true)
     end
-
-    for _, v in ipairs(split(name, '.')) do
-        if not find(v, PAT_PKGNAME) then
-            return false
-        end
-    end
-
-    return true
+    res[#res + 1] = sub(s, i)
+    return res
 end
 
-local PAT_MODNAME = '^[A-Z][a-zA-Z0-9]*$'
-
---- return true if name is a valid module name
---- @param name any
---- @return boolean
-local function isModuleName(name)
-    return type(name) == 'string' and find(name, PAT_MODNAME) ~= nil
-end
-
-local PAT_METAMETHOD = '^__[a-z]+$'
-
---- return true if name matches the metamethod name pattern (__xxx)
---- @param name any
---- @return boolean
-local function isMetamethodName(name)
-    return type(name) == 'string' and find(name, PAT_METAMETHOD) ~= nil
-end
-
-return {
-    packageName = isPackageName,
-    PAT_MODNAME = PAT_MODNAME,
-    moduleName = isModuleName,
-    metamethodName = isMetamethodName,
-}
+return split

@@ -279,9 +279,31 @@ function testcase.embed_error_module_not_found()
     assert.match(err, 'cannot embed module')
 end
 
+function testcase.embed_error_circular_embedding()
+    -- simulate circular embedding via package.preload:
+    -- 'test.mm.circa' embeds 'test.mm.circb', 'test.mm.circb' tries to embed 'test.mm.circa'
+    -- use mm.new({}, ...) (no modname) so regname == pkgname == require path
+    package.preload['test.mm.circa'] = function()
+        mm.new({}, 'test.mm.circb')
+    end
+    package.preload['test.mm.circb'] = function()
+        mm.new({}, 'test.mm.circa')
+    end
+
+    local err = assert.throws(function()
+        mm.new.EmbedCircTrigger({}, 'test.mm.circa')
+    end)
+    assert.match(err, 'circular embedding detected')
+
+    package.preload['test.mm.circa'] = nil
+    package.preload['test.mm.circb'] = nil
+    package.loaded['test.mm.circa']  = nil
+    package.loaded['test.mm.circb']  = nil
+end
+
 function testcase.embed_error_not_a_package_name()
-    -- a PascalCase-only name is not a valid package name, so loadModule() skips
-    -- the require() call entirely and returns 'not found' directly
+    -- a PascalCase-only name is not a valid package name, so loadModule() returns
+    -- 'invalid module name' without attempting require()
     local err = assert.throws(function()
         mm.new.EmbedBadPkg({}, 'UnregisteredModule')
     end)
@@ -290,7 +312,7 @@ end
 
 function testcase.embed_error_package_loaded_but_not_metamodule()
     -- require succeeds but the package does not call metamodule.new,
-    -- so the module name is absent from the registry → error
+    -- so the module name is absent from the registry → 'not a metamodule'
     package.preload['test.mm.notmm'] = function()
         return {} -- plain table, not a metamodule
     end
@@ -366,13 +388,17 @@ end
 -- =============================================================================
 
 function testcase.instance_has_required_fields()
-    -- every instance has _NAME, _PACKAGE, _STRING set automatically
+    -- every instance has _NAME and _PACKAGE set automatically;
+    -- _STRING is computed lazily on the first tostring() call
     local new_m = mm.new.InstFields({})
     local obj = new_m()
 
     assert.equal(obj._NAME, 'InstFields')
     assert.is_nil(obj._PACKAGE) -- no package when called outside require
-    assert.match(obj._STRING, '^InstFields: 0x', false)
+    assert.is_nil(obj._STRING) -- not yet computed (lazy)
+    local str = tostring(obj)
+    assert.match(str, '^InstFields: 0x', false)
+    assert.equal(obj._STRING, str) -- now cached
 end
 
 function testcase.instance_default_init_returns_self()

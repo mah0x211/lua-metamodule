@@ -12,8 +12,6 @@ description = {
 dependencies = {
     "lua >= 5.1",
     "dump ~> 0.1",
-    "string-trim >= 0.2.0",
-    "string-split >= 0.3.0",
 }
 build = {
     type = "builtin",
@@ -24,5 +22,6 @@ build = {
         ["metamodule.is"] = "lib/is.lua",
         ["metamodule.normalize"] = "lib/normalize.lua",
         ["metamodule.seal"] = "lib/seal.lua",
+        ["metamodule.split"] = "lib/split.lua",
     },
 }

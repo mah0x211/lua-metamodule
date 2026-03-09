@@ -23,16 +23,17 @@ local concat = table.concat
 local error = error
 local getinfo = debug.getinfo
 local getlocal = debug.getlocal
+local dbg_getmt = debug.getmetatable
+local dbg_setmt = debug.setmetatable
+local setmetatable = setmetatable
 local find = string.find
 local format = string.format
 local gsub = string.gsub
 local match = string.match
 local sub = string.sub
-local trim_space = require('string.trim')
-local split = require('string.split')
+local split = require('metamodule.split')
 local ipairs = ipairs
 local pairs = pairs
-local setmetatable = setmetatable
 local sort = table.sort
 local tostring = tostring
 local type = type
@@ -46,12 +47,12 @@ local is = require('metamodule.is')
 local seal = require('metamodule.seal')
 --- constants
 local PKG_PATH = (function()
-    local list = split(package.path, ';', nil, true)
+    local list = split(package.path, ';')
     local res = {}
 
     sort(list)
     for _, path in ipairs(list) do
-        path = trim_space(path)
+        path = match(path, '^%s*(.-)%s*$')
         if #path > 0 then
             path = normalize(path)
             path = gsub(path, '%.', '%%.')
@@ -89,17 +90,33 @@ local REGISTRY = {
     -- [<instanceof-function>] = <regname>
 }
 
+--- tracks modules currently being registered (used to detect circular embedding)
+local REGISTERING = {}
+
 local function DEFAULT_INITIALIZER(self)
     return self
 end
 
+-- Compute _STRING lazily on the first tostring() call.
+-- Temporarily strip the metatable so that tostring(self) returns the raw
+-- "table: 0x..." address string without triggering __tostring recursion.
+-- debug.setmetatable is used (instead of setmetatable) to bypass any
+-- __metatable protection the user may have set on the module.
 local function DEFAULT_TOSTRING(self)
-    return self._STRING
+    local s = rawget(self, '_STRING')
+    if not s then
+        local mt = dbg_getmt(self)
+        dbg_setmt(self, nil)
+        s = gsub(tostring(self), 'table', rawget(self, '_NAME'))
+        dbg_setmt(self, mt)
+        rawset(self, '_STRING', s)
+    end
+    return s
 end
 
---- register new metamodule
---- @param s string
---- @vararg any
+--- format a message and raise an error at the nearest non-metamodule call site
+--- @param s string format string
+--- @param ... any  format arguments
 local function errorf(s, ...)
     local msg = format(s, ...)
     local calllv = 2
@@ -129,7 +146,6 @@ local function new_constructor(new_table, metatable, new_metatable)
     --- @return table _M
     return function(...)
         local instance = new_table()
-        instance._STRING = gsub(tostring(instance), 'table', instance._NAME)
         if new_metatable then
             metatable = new_metatable()
         end
@@ -139,11 +155,111 @@ local function new_constructor(new_table, metatable, new_metatable)
     end
 end
 
+--- build the flat __index table from decl.embeds (BFS) then decl.methods
+--- @param decl table
+--- @return table index
+local function build_method_index(decl)
+    local index = {}
+    local queue = {}
+    for _, name in ipairs(decl.embeds) do
+        queue[#queue + 1] = name
+    end
+    while #queue > 0 do
+        local next_queue = {}
+        for i = 1, #queue do
+            local name = queue[i]
+            local m = REGISTRY[name]
+            local methods = {}
+            for k, v in pairs(m.methods) do
+                methods[k] = v
+            end
+            index[name] = methods
+            for _, v in ipairs(m.embeds) do
+                next_queue[#next_queue + 1] = v
+            end
+        end
+        queue = next_queue
+    end
+    -- own methods take priority (written last to overwrite embedded entries)
+    for k, v in pairs(decl.methods) do
+        index[k] = v
+    end
+    return index
+end
+
+--- build the metatable from decl.metamethods.
+--- when __index is a function, also generate a new_metatable factory via eval
+--- so that each constructor call gets a fresh metatable with the correct closure.
+--- @param decl table
+--- @param index table  flat method index from build_method_index
+--- @return table?    metatable
+--- @return function? new_metatable
+--- @return string?   error
+local function build_metatable(decl, index)
+    -- copy all metamethods into a plain metatable table
+    local metatable = {}
+    for k, v in pairs(decl.metamethods) do
+        metatable[k] = v
+    end
+
+    -- indexfn is always function or nil here: inspect() enforces
+    -- METAFIELD_TYPES['__index'] == 'function', and embedModules() only copies
+    -- from already-validated modules.
+    local indexfn = metatable.__index
+    if type(indexfn) ~= 'function' then
+        metatable.__index = index
+        return metatable, nil, nil
+    end
+
+    -- __index is a function: generate a dynamic metatable factory via eval.
+    --
+    --  return {
+    --      <key> = <id>.metamethods.<key>,
+    --      __index = function(self, key)
+    --          if <id>.methods[key] then
+    --              return <id>.methods[key]
+    --          else
+    --              return __index(self, key)
+    --          end
+    --      end,
+    --  }
+    --
+    local id = '__MM_' .. match(tostring(metatable), '0x%d+')
+    local lines = {
+        'return {',
+        format([[
+    __index = function(self, key)
+        if %s.methods[key] then
+            return %s.methods[key]
+        else
+            return %s.metamethods.__index(self, key)
+        end
+    end,]], id, id, id),
+    }
+    metatable.__index = nil
+    for k in pairs(metatable) do
+        lines[#lines + 1] = format('    %s = %s.metamethods.%s,', k, id, k)
+    end
+    metatable.__index = indexfn
+    lines[#lines + 1] = '}'
+    local src = concat(lines, '\n')
+    local new_metatable, err = eval(src, {
+        [id] = {
+            methods = index,
+            metamethods = metatable,
+        },
+    })
+    if err then
+        return nil, nil, err
+    end
+    return metatable, new_metatable, nil
+end
+
 --- register new metamodule
 --- @param regname string
 --- @param decl table
---- @return function constructor
---- @return string? error
+--- @return function? constructor
+--- @return string?   error
 local function register(regname, decl)
     -- already registered (may happen if an embedded module's require() registers
     -- the same regname as a side effect between new()'s pre-check and this call)
@@ -171,95 +287,11 @@ local function register(regname, decl)
     REGISTRY[regname] = decl
     REGISTRY[instanceof] = regname
 
-    -- create metatable
-    local metatable = {}
-    for k, v in pairs(decl.metamethods) do
-        metatable[k] = v
-    end
-
-    -- create method table
-    local index = {}
-    -- append all embedded module methods to the __index field
-    local embeds = {}
-    for _, name in ipairs(decl.embeds) do
-        embeds[#embeds + 1] = name
-    end
-    while #embeds > 0 do
-        local tbl = {}
-
-        for i = 1, #embeds do
-            local name = embeds[i]
-            local m = REGISTRY[name]
-            local methods = {}
-            for k, v in pairs(m.methods) do
-                methods[k] = v
-            end
-            index[name] = methods
-            -- keeps the embedded module names
-            for _, v in ipairs(m.embeds) do
-                tbl[#tbl + 1] = v
-            end
-        end
-        embeds = tbl
-    end
-    -- append methods
-    for k, v in pairs(decl.methods) do
-        index[k] = v
-    end
-
-    -- set methods to __index field if __index is defined
-    -- indexfn is always function or nil here: inspect() enforces
-    -- METAFIELD_TYPES['__index'] == 'function', and embedModules() only copies
-    -- from already-validated modules.  decl.metamethods is a local table that
-    -- only inspect() and embedModules() write to, so no other code path can
-    -- introduce a non-function, non-nil __index.
-    local indexfn = metatable.__index
-    local new_metatable
-    if type(indexfn) == 'function' then
-        -- create new metatable generation function
-        --
-        --  return {
-        --      <key> = <id>.metamethods.<key>,
-        --      __index = function(self, key)
-        --          if <id>.methods[key] then
-        --              return <id>.methods[key]
-        --          else
-        --              return __index(self, key)
-        --          end
-        --      end,
-        --  }
-        --
-        local id = '__MM_' .. match(tostring(metatable), '0x%d+')
-        local lines = {
-            'return {',
-            format([[
-    __index = function(self, key)
-        if %s.methods[key] then
-            return %s.methods[key]
-        else
-            return %s.metamethods.__index(self, key)
-        end
-    end,]], id, id, id),
-        }
-        metatable.__index = nil
-        for k in pairs(metatable) do
-            lines[#lines + 1] = format('    %s = %s.metamethods.%s,', k, id, k)
-        end
-        metatable.__index = indexfn
-        lines[#lines + 1] = '}'
-        src = concat(lines, '\n')
-        new_metatable, err = eval(src, {
-            [id] = {
-                methods = index,
-                metamethods = metatable,
-            },
-        })
-        if err then
-            return nil, err
-        end
-    else
-        metatable.__index = index
-        index = nil
+    local index = build_method_index(decl)
+    local metatable, new_metatable
+    metatable, new_metatable, err = build_metatable(decl, index)
+    if err then
+        return nil, err
     end
 
     -- create new vars table generation function
@@ -276,39 +308,45 @@ end
 
 --- load registered module
 --- @param regname string
---- @return table module
+--- @return table?  module
 --- @return string? error
 local function loadModule(regname)
     local m = REGISTRY[regname]
-
-    -- if it is not registered yet, try to load a module
-    if not m then
-        local segs = split(regname, '.', nil, true)
-        local nseg = #segs
-        local pkg = regname
-
-        -- remove module-name
-        if nseg > 1 and is.moduleName(segs[nseg]) then
-            pkg = concat(segs, '.', 1, nseg - 1)
-        end
-
-        if is.packageName(pkg) then
-            -- load package in protected mode
-            local ok, err = pcall(function()
-                require(pkg)
-            end)
-
-            if not ok then
-                return nil, err
-            end
-
-            -- get loaded module
-            m = REGISTRY[regname]
-        end
+    if m then
+        return m
     end
 
+    local segs = split(regname, '.')
+    local nseg = #segs
+    local pkg = regname
+    -- remove module-name
+    if nseg > 1 and is.moduleName(segs[nseg]) then
+        pkg = concat(segs, '.', 1, nseg - 1)
+    end
+
+    if not is.packageName(pkg) then
+        return nil, 'invalid module name'
+    end
+
+    -- loadModule is always called from within new(), so REGISTERING[regname] is
+    -- already set for any module currently being registered. if it is set here,
+    -- the caller is trying to embed a module that is still being registered,
+    -- which means there is a circular embedding.
+    if REGISTERING[regname] then
+        return nil, 'circular embedding detected'
+    end
+
+    -- load package in protected mode
+    local ok, err = pcall(function()
+        require(pkg)
+    end)
+    if not ok then
+        return nil, err
+    end
+
+    m = REGISTRY[regname]
     if not m then
-        return nil, 'not found'
+        return nil, 'not a metamodule'
     end
 
     return m
@@ -320,11 +358,22 @@ local IDENT_FIELDS = {
     ['_STRING'] = true,
 }
 
---- embed methods and metamethods of modules to module declaration table and
---- returns the list of module names and the methods of all modules
+--- copy entries from src into dst, skipping keys that already exist in dst
+--- @param src table
+--- @param dst table
+local function merge_no_overwrite(src, dst)
+    for k, v in pairs(src) do
+        if not dst[k] then
+            dst[k] = v
+        end
+    end
+end
+
+--- embed vars, methods and metamethods from each listed module into decl.
+--- own fields always take priority over embedded fields.
 --- @param decl table
---- @param ... string base module names
---- @return table moduleNames
+--- @param ... string  names of modules to embed
+--- @return table embeds  list of embedded module names (also keyed by name)
 local function embedModules(decl, ...)
     local moduleNames = {}
     local chkdup = {}
@@ -385,17 +434,9 @@ local function embedModules(decl, ...)
     end
 
     -- add vars, methods and metamethods field of embedded modules
-    for src, dst in pairs({
-        [vars] = decl.vars,
-        [methods] = decl.methods,
-        [metamethods] = decl.metamethods,
-    }) do
-        for k, v in pairs(src) do
-            if not dst[k] then
-                dst[k] = v
-            end
-        end
-    end
+    merge_no_overwrite(vars, decl.vars)
+    merge_no_overwrite(methods, decl.methods)
+    merge_no_overwrite(metamethods, decl.metamethods)
 
     return moduleNames
 end
@@ -438,7 +479,7 @@ local METAFIELD_TYPES = {
 --- inspect module declaration table
 --- @param regname string
 --- @param moddecl table
---- @return table delc
+--- @return table decl
 local function inspect(regname, moddecl)
     local circular = {
         [tostring(moddecl)] = regname,
@@ -495,10 +536,10 @@ local function inspect(regname, moddecl)
 end
 
 --- create constructor of new metamodule
---- @param pkgname string
---- @param modname string
+--- @param pkgname string?  package name (nil when not called via require)
+--- @param modname string?  module name (nil when using metamodule.new(decl) form)
 --- @param moddecl table
---- @param ... string base module names
+--- @param ... string  names of modules to embed
 --- @return function constructor
 local function new(pkgname, modname, moddecl, ...)
     -- verify modname
@@ -536,8 +577,17 @@ local function new(pkgname, modname, moddecl, ...)
     -- inspect module declaration table
     local decl = inspect(regname, moddecl)
 
-    -- embed another modules
-    decl.embeds = embedModules(decl, ...)
+    -- embed another modules; mark as being registered so loadModule() can detect
+    -- circular embedding (A embeds B, B embeds A) and report a clear error.
+    -- pcall ensures REGISTERING is always cleaned up, even if embedModules errors.
+    REGISTERING[regname] = true
+    local ok, embeds_or_err = pcall(embedModules, decl, ...)
+    REGISTERING[regname] = nil
+    if not ok then
+        -- embeds_or_err already contains file:line from errorf; re-raise as-is
+        error(embeds_or_err, 0)
+    end
+    decl.embeds = embeds_or_err
     -- register to registry
     decl.vars._PACKAGE = pkgname
     decl.vars._NAME = regname
@@ -554,7 +604,7 @@ end
 
 --- converts pathname in package.path to module names
 --- @param s string
---- @return string|nil
+--- @return string?
 local function pathname2modname(s)
     for _, pattern in ipairs(PKG_PATH) do
         local cap = match(s, pattern)
@@ -569,7 +619,7 @@ end
 --- get the package name from the filepath of the 'new' function caller.
 --- the package name is the same as the modname argument of the require function.
 --- returns nil if called by a function other than the require function.
---- @return string|nil
+--- @return string?
 local function get_pkgname()
     -- get_pkgname() is only called from __call (lv 2) or __index (lv 2),
     -- so lv 2 is always the metamodule frame and is skipped.
@@ -607,7 +657,7 @@ end
 
 --- instanceof
 --- @param obj any
---- @param name? string
+--- @param name string
 --- @return boolean
 local function instanceof(obj, name)
     if type(name) ~= 'string' then
@@ -630,12 +680,12 @@ end
 
 --- dump registry table
 --- @return string
-local function dumpRegstiry()
+local function dumpRegistry()
     return dump(REGISTRY)
 end
 
 return {
-    dump = dumpRegstiry,
+    dump = dumpRegistry,
     instanceof = instanceof,
     new = setmetatable({}, {
         __metatable = 1,
