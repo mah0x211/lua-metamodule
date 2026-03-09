@@ -58,7 +58,7 @@ jobs:
     -
       name: Run Test
       run: |
-        testcase --coverage ./test/
+        testcase ./test/
     -
       name: Upload lua coverage to Codecov
       uses: codecov/codecov-action@v4
